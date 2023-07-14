@@ -1,25 +1,13 @@
-/**
- * Write API for Registration adn Login page of the application.
-1.create a registration 
-name
-email 
-age
-password:
-
-
-2.create a sigin and verify that if user is there database login to website
-
-3.create an enpoint to display
-name,email and age but not password.
- */
-import dotenv from "dotenv";
-dotenv.config();
 import express from 'express';
-import cors from 'express';
-import { MongoClient } from "mongodb";
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { MongoClient } from 'mongodb';
 
 // Initiate app with express top level function.
 const app = express();
+
+// Configure environments variable
+dotenv.config();
 const PORT = process.env.PORT || 9999;
 const MONGO_URL = process.env.DATABASE_URI;
 const MONGO_PASSWORD = process.env.DATABASE_PASSWORD;
@@ -52,6 +40,7 @@ const createConnection = async () => {
     console.log(err.message);
   }
 };
+
 // calling the createConnection function to connect with DB
 const client = await createConnection();
 
@@ -62,92 +51,101 @@ app.get('/', (req, res) => {
 
 // Create a registration route
 app.post('/api/v1/signup', async (req, res) => {
-  // 1. retrive tha data from req.body
-  const reqData = req.body;
-  const { email } = req.body;
 
-  // 2. check if user is exist or not
-  const existingUser = await client
-    .db('authentication')
-    .collection('auth')
-    .findOne(
-      { "email": email },
-      { projection: { _id: 0, "age": 0, "password": 0 } }
-    );
+  try {
+    // 1. retrive tha data from req.body
+    const reqData = req.body;
+    const { email } = req.body;
 
-  if (existingUser) {
-    return res.status(400).json(
-      { "message": "User is already exist. Try to login.", data: existingUser }
-    );
+    // 2. check if user is exist or not
+    const existingUser = await client
+      .db('authentication')
+      .collection('auth')
+      .findOne(
+        { "email": email },
+        { projection: { _id: 0, "age": 0, "password": 0 } }
+      );
+
+    if (existingUser) {
+      return res.status(400).json(
+        { "message": "User is already exist. Try to login.", data: existingUser }
+      );
+    }
+
+    // 3. create a user
+    const user = await client
+      .db('authentication')
+      .collection('auth')
+      .insertOne(reqData);
+
+    // 4. send a response to the user
+    if (user.acknowledged) {
+      res.status(201).json({ message: "Account created", user: user.insertedId });
+    }
+  } catch (err) {
+    res.status(400).json({ message: "Something went wrong.Please try again.", error: err.message });
   }
 
-  // 3. create a user
-  const user = await client
-    .db('authentication')
-    .collection('auth')
-    .insertOne(reqData);
-
-  // 4. send a response to the user
-  if (user.acknowledged) {
-    return res.status(201).json({ user: user.insertedId });
-  } else {
-    return res.status(400).json({ "message": "Something went wrong.Please try again." });
-  }
 });
 
 // create a login router
 app.post('/api/v1/signin', async (req, res) => {
-  // 1. retrive the data from req.body
-  const { email, password } = req.body;
 
-  // 2. check the user have valid credentials or not
-  const existingUser = await client
-    .db('authentication')
-    .collection('auth')
-    .findOne(
-      { "email": email, "password": password },
-      { projection: { _id: 1, "age": 0, "password": 0 } }
-    );
+  try {
+    // 1. retrive the data from req.body
+    const { email, password } = req.body;
 
-  if (existingUser === null || undefined) {
-    return res.status(400).json({ "message": "Email or password is not valid!!!" });
-  } else {
-
-    // 3. login the user
-    const { _id: id } = existingUser;
-    const loginUser = await client
+    // 2. check the user have valid credentials or not
+    const existingUser = await client
       .db('authentication')
       .collection('auth')
-      .findOneAndUpdate(
-        { _id: id },
-        { $set: { "loginStatus": true } },
-        { projection: { _id: 0, "password": 0 } },
-        { returnNewDocument: true }
+      .findOne(
+        { "email": email, "password": password },
+        { projection: { _id: 1, "age": 0, "password": 0 } }
       );
 
-    // 4. send a respone to the user
-    if (loginUser) {
-      res.status(200).json({ user: loginUser.value });
+    if (existingUser === null || undefined) {
+      return res.status(400).json({ "message": "Email or password is not valid!!!" });
     } else {
-      res.status(400).json({ "message": "Something went wrong!!!" });
+
+      // 3. login the user
+      const { _id: id } = existingUser;
+      const loginUser = await client
+        .db('authentication')
+        .collection('auth')
+        .findOneAndUpdate(
+          { _id: id },
+          { $set: { "loginStatus": true } },
+          { projection: { _id: 0, "password": 0 } },
+          { returnNewDocument: true }
+        );
+
+      // 4. send a respone to the user
+      if (loginUser) {
+        res.status(200).json({ user: loginUser.value });
+      }
     }
+  } catch (err) {
+    res.status(400).json({ message: "Something went wrong!!!", error: err.message });
   }
+
 });
 
 // get user info/details
 app.get('/api/v1/users', async (req, res) => {
+  try {
+    // get the user details from the database
+    const users = await client
+      .db('authentication')
+      .collection('auth')
+      .find({}, { projection: { _id: 0, "password": 0 } })
+      .toArray();
 
-  // get the user details from the database
-  const users = await client
-    .db('authentication')
-    .collection('auth')
-    .find({}, { projection: { _id: 0, "password": 0 } })
-    .toArray();
-
-  // send back to the user
-  if (users) {
-    res.status(200).json({ "message": "Success", users: users });
-  } else {
+    // send back to the user
+    if (users) {
+      res.status(200).json({ "message": "Success", users: users });
+    }
+  } catch (err) {
     res.status(400).json({ "message": "Something went wrong. Please try again" });
   }
 
